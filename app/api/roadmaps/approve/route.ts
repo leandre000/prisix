@@ -101,9 +101,6 @@ export async function POST(request: Request) {
     // Update roadmap status
     const updateData: any = {
       status,
-      currentApproval: {
-        connect: { id: approval.id },
-      },
     }
 
     if (status === 'APPROVED') {

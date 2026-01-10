@@ -23,7 +23,10 @@ export default async function RoadmapPage() {
               user: true,
             },
           },
-          currentApproval: {
+          approvals: {
+            where: {
+              isCurrent: true,
+            },
             include: {
               mentor: {
                 include: {
@@ -31,6 +34,7 @@ export default async function RoadmapPage() {
                 },
               },
             },
+            take: 1,
           },
         },
       },
@@ -76,13 +80,13 @@ export default async function RoadmapPage() {
               {roadmap.status === 'CHANGES_REQUESTED' && 'Your roadmap needs changes. Please review mentor comments.'}
             </CardDescription>
           </CardHeader>
-          {roadmap.currentApproval && (
+          {roadmap.approvals && roadmap.approvals.length > 0 && (
             <CardContent>
-              {roadmap.currentApproval.comments && (
+              {roadmap.approvals[0].comments && (
                 <div className="p-3 bg-white rounded-lg border">
-                  <p className="text-sm text-gray-700">{roadmap.currentApproval.comments}</p>
+                  <p className="text-sm text-gray-700">{roadmap.approvals[0].comments}</p>
                   <p className="text-xs text-gray-500 mt-2">
-                    - {roadmap.currentApproval.mentor.user.name}
+                    - {roadmap.approvals[0].mentor.user.name}
                   </p>
                 </div>
               )}
@@ -129,7 +133,7 @@ export default async function RoadmapPage() {
               </div>
               <div>
                 <div className="text-sm font-medium text-gray-500">Monthly Price</div>
-                <div className="text-lg font-semibold text-gray-900">${roadmap.monthlyPrice}</div>
+                <div className="text-lg font-semibold text-gray-900">${Number(roadmap.monthlyPrice)}</div>
               </div>
               <div>
                 <div className="text-sm font-medium text-gray-500">Trainer</div>

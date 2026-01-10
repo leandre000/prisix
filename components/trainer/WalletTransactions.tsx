@@ -6,7 +6,7 @@ import { formatDateTime, formatCurrency } from '@/lib/utils'
 interface Transaction {
   id: string
   type: string
-  amount: number | string
+  amount: number | string | any // Decimal from Prisma
   description: string | null
   createdAt: Date | string
 }
@@ -65,7 +65,7 @@ export default function WalletTransactions({ transactions }: WalletTransactionsP
               'text-gray-900'
             }`}>
               {isEarning ? '+' : isWithdrawal ? '-' : ''}
-              {formatCurrency(transaction.amount)}
+              {formatCurrency(Number(transaction.amount))}
             </div>
           </div>
         )

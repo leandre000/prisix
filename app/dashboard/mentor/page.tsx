@@ -48,7 +48,10 @@ export default async function MentorDashboard() {
           user: true,
         },
       },
-      currentApproval: {
+      approvals: {
+        where: {
+          isCurrent: true,
+        },
         include: {
           mentor: {
             include: {
@@ -56,6 +59,7 @@ export default async function MentorDashboard() {
             },
           },
         },
+        take: 1,
       },
     },
     orderBy: {
@@ -173,7 +177,7 @@ export default async function MentorDashboard() {
                           </p>
                           <p>
                             <strong>Weekly Hours:</strong> {roadmap.weeklyHours}h | 
-                            <strong> Monthly Price:</strong> ${roadmap.monthlyPrice}
+                            <strong> Monthly Price:</strong> ${Number(roadmap.monthlyPrice)}
                           </p>
                         </div>
                         <p className="text-sm text-gray-700 mt-2 line-clamp-2">

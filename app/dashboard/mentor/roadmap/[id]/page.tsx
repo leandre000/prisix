@@ -36,15 +36,6 @@ export default async function RoadmapApprovalPage({
           user: true,
         },
       },
-      currentApproval: {
-        include: {
-          mentor: {
-            include: {
-              user: true,
-            },
-          },
-        },
-      },
       approvals: {
         include: {
           mentor: {

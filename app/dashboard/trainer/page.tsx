@@ -210,7 +210,7 @@ export default async function TrainerDashboard() {
                           Roadmap: {roadmap.title}
                         </div>
                         <div className="text-xs text-gray-500 mt-1">
-                          Weekly: {roadmap.weeklyHours}h | Price: ${roadmap.monthlyPrice}/month
+                          Weekly: {roadmap.weeklyHours}h | Price: ${Number(roadmap.monthlyPrice)}/month
                         </div>
                       </div>
                       <Link

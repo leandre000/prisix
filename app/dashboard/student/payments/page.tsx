@@ -60,7 +60,7 @@ export default async function PaymentsPage() {
               <div className="space-y-2">
                 <div className="flex justify-between">
                   <span className="text-gray-600">Amount:</span>
-                  <span className="font-semibold">${activePayment.amount}</span>
+                  <span className="font-semibold">${Number(activePayment.amount)}</span>
                 </div>
                 <div className="flex justify-between">
                   <span className="text-gray-600">Start Date:</span>
@@ -104,7 +104,7 @@ export default async function PaymentsPage() {
                 Make Payment
               </CardTitle>
               <CardDescription>
-                Monthly subscription: ${student.roadmap.monthlyPrice}
+                Monthly subscription: ${Number(student.roadmap.monthlyPrice)}
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -127,7 +127,7 @@ export default async function PaymentsPage() {
                     className="p-4 border border-gray-200 rounded-lg flex items-center justify-between"
                   >
                     <div>
-                      <div className="font-semibold">${payment.amount}</div>
+                      <div className="font-semibold">${Number(payment.amount)}</div>
                       <div className="text-sm text-gray-600">
                         {new Date(payment.createdAt).toLocaleDateString()}
                       </div>

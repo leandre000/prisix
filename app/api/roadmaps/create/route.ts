@@ -119,6 +119,7 @@ export async function POST(request: Request) {
         learningObjectives,
         weeklyHours,
         practiceExpectations,
+        reviewCheckpoints: [],
         weeklySchedule: weeklySchedule || {},
         monthlyPrice,
         status: 'PENDING_APPROVAL',

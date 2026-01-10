@@ -23,7 +23,10 @@ export default async function StudentDashboard() {
               user: true,
             },
           },
-          currentApproval: {
+          approvals: {
+            where: {
+              isCurrent: true,
+            },
             include: {
               mentor: {
                 include: {
@@ -31,6 +34,7 @@ export default async function StudentDashboard() {
                 },
               },
             },
+            take: 1,
           },
         },
       },
@@ -193,7 +197,7 @@ export default async function StudentDashboard() {
                     </div>
                     <div className="flex justify-between text-sm">
                       <span className="text-gray-600">Monthly Price:</span>
-                      <span className="font-semibold">${roadmap.monthlyPrice}</span>
+                      <span className="font-semibold">${Number(roadmap.monthlyPrice)}</span>
                     </div>
                   </div>
                   <Link

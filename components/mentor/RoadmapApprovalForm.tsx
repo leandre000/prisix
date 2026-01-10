@@ -190,7 +190,7 @@ export default function RoadmapApprovalForm({ roadmap, mentorId }: RoadmapApprov
             </div>
             <div>
               <div className="text-sm font-medium text-gray-500">Monthly Price</div>
-              <div className="text-lg font-semibold text-gray-900">${roadmap.monthlyPrice}</div>
+              <div className="text-lg font-semibold text-gray-900">${Number(roadmap.monthlyPrice)}</div>
             </div>
           </CardContent>
         </Card>
