@@ -4,27 +4,35 @@ import { authOptions } from '@/lib/auth'
 import { prisma } from '@/lib/prisma'
 import { logActivity } from '@/lib/audit'
 import { canStudentStartLearning } from '@/lib/enforcement'
+import { generateMeetingLink, isValidMeetingLink } from '@/lib/google-meet'
+import { validate, sessionSchema } from '@/lib/validation'
+import { handleError, BusinessRuleError, AuthorizationError } from '@/lib/errors'
 
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions)
 
     if (!session) {
-      return NextResponse.json(
-        { error: 'Unauthorized' },
-        { status: 401 }
-      )
+      throw new AuthorizationError('Unauthorized')
     }
 
     const body = await request.json()
-    const { roadmapId, scheduledAt, duration, meetingLink } = body
+    
+    // Validate input
+    const validatedData = validate(sessionSchema, {
+      scheduledAt: body.scheduledAt,
+      duration: body.duration,
+      meetingLink: body.meetingLink || generateMeetingLink({
+        title: `Learning Session`,
+        startTime: new Date(body.scheduledAt),
+        duration: body.duration,
+      }),
+    })
 
-    // Validation
-    if (!roadmapId || !scheduledAt || !duration || !meetingLink) {
-      return NextResponse.json(
-        { error: 'Missing required fields' },
-        { status: 400 }
-      )
+    const { roadmapId } = body
+
+    if (!roadmapId) {
+      throw new BusinessRuleError('Roadmap ID is required')
     }
 
     // Get roadmap with student
@@ -45,27 +53,18 @@ export async function POST(request: Request) {
     })
 
     if (!roadmap) {
-      return NextResponse.json(
-        { error: 'Roadmap not found' },
-        { status: 404 }
-      )
+      throw new BusinessRuleError('Roadmap not found')
     }
 
     // Check if roadmap is approved
     if (roadmap.status !== 'APPROVED') {
-      return NextResponse.json(
-        { error: 'Roadmap must be approved before scheduling sessions' },
-        { status: 400 }
-      )
+      throw new BusinessRuleError('Roadmap must be approved before scheduling sessions')
     }
 
     // Check if student can start learning
     const canStart = await canStudentStartLearning(roadmap.studentId)
     if (!canStart) {
-      return NextResponse.json(
-        { error: 'Student cannot start learning yet. Complete entry flow and make payment.' },
-        { status: 400 }
-      )
+      throw new BusinessRuleError('Student cannot start learning yet. Complete entry flow and make payment.')
     }
 
     // Verify user is trainer or student
@@ -73,15 +72,12 @@ export async function POST(request: Request) {
     const isStudent = session.user.role === 'STUDENT' && roadmap.student.userId === session.user.id
 
     if (!isTrainer && !isStudent) {
-      return NextResponse.json(
-        { error: 'Only the trainer or student can schedule sessions' },
-        { status: 403 }
-      )
+      throw new AuthorizationError('Only the trainer or student can schedule sessions')
     }
 
     // Check for scheduling conflicts (same trainer, overlapping time)
-    const scheduledTime = new Date(scheduledAt)
-    const endTime = new Date(scheduledTime.getTime() + duration * 60000)
+    const scheduledTime = new Date(validatedData.scheduledAt)
+    const endTime = new Date(scheduledTime.getTime() + validatedData.duration * 60000)
 
     const conflictingSession = await prisma.session.findFirst({
       where: {
@@ -104,7 +100,7 @@ export async function POST(request: Request) {
               lte: scheduledTime,
             },
             duration: {
-              gte: duration,
+              gte: validatedData.duration,
             },
           },
         ],
@@ -112,10 +108,17 @@ export async function POST(request: Request) {
     })
 
     if (conflictingSession) {
-      return NextResponse.json(
-        { error: 'Trainer has a conflicting session at this time' },
-        { status: 400 }
-      )
+      throw new BusinessRuleError('Trainer has a conflicting session at this time')
+    }
+
+    // Generate meeting link if not provided or invalid
+    let meetingLink = validatedData.meetingLink
+    if (!meetingLink || !isValidMeetingLink(meetingLink)) {
+      meetingLink = generateMeetingLink({
+        title: `Session: ${roadmap.title}`,
+        startTime: scheduledTime,
+        duration: validatedData.duration,
+      })
     }
 
     // Create session
@@ -126,7 +129,7 @@ export async function POST(request: Request) {
         studentId: roadmap.studentId,
         wingId: roadmap.wingId,
         scheduledAt: scheduledTime,
-        duration,
+        duration: validatedData.duration,
         meetingLink,
         status: 'SCHEDULED',
       },
@@ -140,8 +143,8 @@ export async function POST(request: Request) {
       {
         sessionId: newSession.id,
         roadmapId,
-        scheduledAt,
-        duration,
+        scheduledAt: scheduledTime,
+        duration: validatedData.duration,
       }
     )
 
@@ -151,14 +154,14 @@ export async function POST(request: Request) {
         id: newSession.id,
         scheduledAt: newSession.scheduledAt,
         duration: newSession.duration,
+        meetingLink: newSession.meetingLink,
       },
     })
   } catch (error) {
-    console.error('Error creating session:', error)
+    const { message, statusCode } = handleError(error)
     return NextResponse.json(
-      { error: 'Internal server error' },
-      { status: 500 }
+      { error: message },
+      { status: statusCode }
     )
   }
 }
-
