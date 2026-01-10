@@ -23,7 +23,6 @@ yarn-debug.log*
 yarn-error.log*
 
 # Local env files
-.env
 .env*.local
 .env.development.local
 .env.test.local
@@ -40,7 +39,6 @@ next-env.d.ts
 /prisma/migrations
 
 # IDE
-.vscode/
 .idea/
 *.swp
 *.swo
@@ -58,3 +56,4 @@ Thumbs.db
 /Desktop
 /Documents
 
+config.bat
