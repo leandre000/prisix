@@ -4,9 +4,9 @@
   "description": "Umbrella School Runtime - Production-ready LMS with enforcement-based learning",
   "private": true,
   "scripts": {
-    "dev": "next dev",
-    "build": "prisma generate && next build",
-    "start": "next start",
+    "dev": "node init && next dev",
+    "build": "node init && prisma generate && next build",
+    "start": "node init && next start",
     "lint": "next lint",
     "postinstall": "prisma generate",
     "db:generate": "prisma generate",
@@ -55,4 +55,3 @@
     "typescript": "^5.3.3"
   }
 }
-
