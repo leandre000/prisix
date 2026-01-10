@@ -1,0 +1,501 @@
+// Umbrella SR Database Schema
+// Production-ready, enforcement-based LMS
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// CORE ENTITIES
+// ============================================
+
+enum UserRole {
+  STUDENT
+  TRAINER
+  MASTER_MENTOR
+  WING_ADMIN
+  UMBRELLA_ADMIN
+}
+
+enum RoadmapStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CHANGES_REQUESTED
+}
+
+enum SessionStatus {
+  SCHEDULED
+  COMPLETED
+  CANCELLED
+  DISPUTED
+}
+
+enum ConfirmationStatus {
+  PENDING
+  CONFIRMED
+  DISPUTED
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum TransactionType {
+  PAYMENT
+  WITHDRAWAL
+  REFUND
+  TRANSFER
+}
+
+enum ActivityType {
+  ROADMAP_CREATED
+  ROADMAP_APPROVED
+  ROADMAP_REJECTED
+  ROADMAP_CHANGES_REQUESTED
+  SESSION_SCHEDULED
+  SESSION_CONFIRMED
+  SESSION_DISPUTED
+  PAYMENT_RECEIVED
+  WITHDRAWAL_REQUESTED
+  WITHDRAWAL_APPROVED
+  WITHDRAWAL_REJECTED
+  PROGRESSION_UNLOCKED
+  CAPACITY_UPDATED
+}
+
+// ============================================
+// USER & AUTHENTICATION
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String
+  passwordHash  String
+  role          UserRole
+  avatar        String?
+  phone         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relationships
+  wingId        String?
+  wing          Wing?     @relation(fields: [wingId], references: [id], onDelete: SetNull)
+
+  // Role-specific relationships
+  studentProfile    StudentProfile?
+  trainerProfile    TrainerProfile?
+  mentorProfile     MentorProfile?
+  wingAdminProfile  WingAdminProfile?
+  umbrellaAdminProfile UmbrellaAdminProfile?
+
+  // Activity logs
+  activities    ActivityLog[]
+
+  @@index([email])
+  @@index([role])
+  @@index([wingId])
+}
+
+// ============================================
+// WING (Multi-tenant structure)
+// ============================================
+
+model Wing {
+  id              String    @id @default(cuid())
+  name            String    @unique
+  slug            String    @unique
+  description     String?
+  guidanceDocument String?  // URL or path to guidance document
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  // Relationships
+  users           User[]
+  students        StudentProfile[]
+  trainers        TrainerProfile[]
+  roadmaps        Roadmap[]
+  sessions        Session[]
+  wallet          WingWallet?
+
+  @@index([slug])
+}
+
+// ============================================
+// ROLE-SPECIFIC PROFILES
+// ============================================
+
+model StudentProfile {
+  id              String    @id @default(cuid())
+  userId          String    @unique
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wingId          String
+  wing            Wing      @relation(fields: [wingId], references: [id], onDelete: Cascade)
+
+  // Entry flow tracking
+  hasChosenWing   Boolean   @default(false)
+  hasReadGuidance Boolean   @default(false)
+  hasMetTrainer   Boolean   @default(false)
+  canStartLearning Boolean  @default(false)
+
+  // Roadmap
+  roadmap         Roadmap?
+
+  // Sessions
+  sessions        Session[] @relation("StudentSessions")
+
+  // Payments
+  payments        Payment[]
+
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([wingId])
+}
+
+model TrainerProfile {
+  id                String    @id @default(cuid())
+  userId            String    @unique
+  user              User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wingId            String
+  wing              Wing      @relation(fields: [wingId], references: [id], onDelete: Cascade)
+
+  // Capacity management
+  weeklyHoursAvailable Int    @default(0) // Hours per week
+  maxStudents          Int    @default(0) // Calculated: (weeklyHours / 4.5)
+  currentStudentCount   Int    @default(0)
+
+  // Relationships
+  roadmapsCreated   Roadmap[]
+  sessions          Session[] @relation("TrainerSessions")
+  wallet            TrainerWallet?
+
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  @@index([wingId])
+}
+
+model MentorProfile {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wingId        String?
+  wing          Wing?     @relation(fields: [wingId], references: [id], onDelete: SetNull)
+
+  // Can approve across wings if wingId is null (Umbrella-level mentor)
+  approvals     RoadmapApproval[]
+  progressions  ProgressionApproval[]
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([wingId])
+}
+
+model WingAdminProfile {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  wingId        String
+  wing          Wing      @relation(fields: [wingId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([wingId])
+}
+
+model UmbrellaAdminProfile {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+// ============================================
+// ROADMAP SYSTEM (CORE)
+// ============================================
+
+model Roadmap {
+  id                  String          @id @default(cuid())
+  studentId           String          @unique
+  student             StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  trainerId           String
+  trainer             TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Restrict)
+  wingId              String
+  wing                Wing            @relation(fields: [wingId], references: [id], onDelete: Cascade)
+
+  // Roadmap content
+  title               String
+  description         String          @db.Text
+  learningObjectives  String          @db.Text
+  weeklySchedule      Json            // Structured schedule data
+  weeklyHours         Float           @default(4.5) // Minimum 4.5 hours
+  practiceExpectations String         @db.Text
+  reviewCheckpoints   Json            // Array of checkpoint dates/requirements
+  monthlyPrice        Decimal         @db.Decimal(10, 2)
+
+  // Status and approval
+  status              RoadmapStatus   @default(DRAFT)
+  version             Int             @default(1)
+  previousVersionId   String?         // For tracking roadmap changes
+
+  // Approval workflow
+  approvals           RoadmapApproval[] @relation("RoadmapApprovals")
+  currentApproval     RoadmapApproval? @relation("CurrentApproval")
+
+  // Progression
+  currentPhase        Int             @default(1)
+  isLocked            Boolean         @default(true) // Locked until approved
+  progressions        ProgressionApproval[]
+
+  createdAt           DateTime        @default(now())
+  updatedAt           DateTime        @updatedAt
+  approvedAt          DateTime?
+
+  @@index([trainerId])
+  @@index([wingId])
+  @@index([status])
+}
+
+model RoadmapApproval {
+  id            String        @id @default(cuid())
+  roadmapId     String
+  roadmap       Roadmap       @relation("RoadmapApprovals", fields: [roadmapId], references: [id], onDelete: Cascade)
+  currentRoadmap Roadmap?     @relation("CurrentApproval")
+  mentorId     String
+  mentor       MentorProfile @relation(fields: [mentorId], references: [id], onDelete: Restrict)
+
+  status        RoadmapStatus
+  comments      String?       @db.Text
+  isCurrent     Boolean       @default(true)
+
+  createdAt     DateTime      @default(now())
+
+  @@index([roadmapId])
+  @@index([mentorId])
+}
+
+// ============================================
+// PROGRESSION CONTROL
+// ============================================
+
+model ProgressionApproval {
+  id            String        @id @default(cuid())
+  roadmapId     String
+  roadmap       Roadmap       @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  mentorId     String
+  mentor       MentorProfile @relation(fields: [mentorId], references: [id], onDelete: Restrict)
+
+  fromPhase     Int
+  toPhase       Int
+  approved      Boolean
+  comments      String?       @db.Text
+
+  createdAt     DateTime      @default(now())
+
+  @@index([roadmapId])
+  @@index([mentorId])
+}
+
+// ============================================
+// SESSION MANAGEMENT
+// ============================================
+
+model Session {
+  id                String            @id @default(cuid())
+  roadmapId         String
+  roadmap           Roadmap           @relation(fields: [roadmapId], references: [id], onDelete: Cascade)
+  trainerId         String
+  trainer           TrainerProfile    @relation("TrainerSessions", fields: [trainerId], references: [id], onDelete: Restrict)
+  studentId         String
+  student           StudentProfile    @relation("StudentSessions", fields: [studentId], references: [id], onDelete: Cascade)
+  wingId            String
+  wing              Wing              @relation(fields: [wingId], references: [id], onDelete: Cascade)
+
+  // Session details
+  scheduledAt       DateTime
+  duration          Int               // Duration in minutes
+  meetingLink       String
+  status            SessionStatus     @default(SCHEDULED)
+
+  // Dual confirmation
+  trainerConfirmation ConfirmationStatus @default(PENDING)
+  trainerConfirmedAt  DateTime?
+  studentConfirmation ConfirmationStatus @default(PENDING)
+  studentConfirmedAt  DateTime?
+
+  // Dispute handling
+  isDisputed        Boolean           @default(false)
+  disputeReason     String?           @db.Text
+  resolvedAt        DateTime?
+
+  // Counts toward weekly hours only if BOTH confirmed
+  countsTowardHours Boolean           @default(false)
+
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+
+  @@index([trainerId])
+  @@index([studentId])
+  @@index([roadmapId])
+  @@index([scheduledAt])
+  @@index([status])
+}
+
+// ============================================
+// PAYMENT SYSTEM
+// ============================================
+
+model Payment {
+  id                String          @id @default(cuid())
+  studentId         String
+  student           StudentProfile  @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  roadmapId         String
+  roadmap           Roadmap         @relation(fields: [roadmapId], references: [id], onDelete: Restrict)
+
+  amount            Decimal         @db.Decimal(10, 2)
+  status            PaymentStatus   @default(PENDING)
+  paymentMethod     String?
+  paymentGatewayId  String?         // External payment gateway transaction ID
+
+  // Access period
+  startDate         DateTime
+  endDate           DateTime
+  isActive          Boolean         @default(false)
+
+  // Automatic distribution (immutable)
+  wingAmount        Decimal         @db.Decimal(10, 2) // 35%
+  umbrellaAmount    Decimal         @db.Decimal(10, 2) // 65%
+
+  // Transactions
+  transactions      Transaction[]
+
+  createdAt         DateTime        @default(now())
+  updatedAt          DateTime        @updatedAt
+  completedAt       DateTime?
+
+  @@index([studentId])
+  @@index([roadmapId])
+  @@index([status])
+  @@index([endDate])
+}
+
+// ============================================
+// WALLET SYSTEM
+// ============================================
+
+model TrainerWallet {
+  id                String          @id @default(cuid())
+  trainerId         String          @unique
+  trainer           TrainerProfile  @relation(fields: [trainerId], references: [id], onDelete: Cascade)
+
+  balance           Decimal         @default(0) @db.Decimal(10, 2)
+  totalEarned       Decimal         @default(0) @db.Decimal(10, 2)
+  totalWithdrawn    Decimal         @default(0) @db.Decimal(10, 2)
+
+  // Earnings paused if sessions disputed
+  isPaused          Boolean         @default(false)
+
+  transactions      Transaction[]
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+model WingWallet {
+  id                String          @id @default(cuid())
+  wingId            String          @unique
+  wing              Wing            @relation(fields: [wingId], references: [id], onDelete: Cascade)
+
+  balance           Decimal         @default(0) @db.Decimal(10, 2)
+  totalReceived     Decimal         @default(0) @db.Decimal(10, 2)
+  totalWithdrawn    Decimal         @default(0) @db.Decimal(10, 2)
+
+  // Withdrawal allowed only if learning is active
+  canWithdraw       Boolean         @default(false)
+
+  transactions      Transaction[]
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+model UmbrellaWallet {
+  id                String          @id @default(cuid())
+  balance           Decimal         @default(0) @db.Decimal(10, 2)
+  totalReceived     Decimal         @default(0) @db.Decimal(10, 2)
+  totalWithdrawn    Decimal         @default(0) @db.Decimal(10, 2)
+
+  transactions      Transaction[]
+
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+}
+
+// ============================================
+// TRANSACTIONS & AUDIT
+// ============================================
+
+model Transaction {
+  id                String          @id @default(cuid())
+  type            TransactionType
+
+  // Source
+  paymentId       String?
+  payment         Payment?         @relation(fields: [paymentId], references: [id], onDelete: SetNull)
+
+  // Destination wallets
+  trainerWalletId String?
+  trainerWallet   TrainerWallet?   @relation(fields: [trainerWalletId], references: [id], onDelete: SetNull)
+  wingWalletId    String?
+  wingWallet      WingWallet?      @relation(fields: [wingWalletId], references: [id], onDelete: SetNull)
+  umbrellaWalletId String?
+  umbrellaWallet  UmbrellaWallet?  @relation(fields: [umbrellaWalletId], references: [id], onDelete: SetNull)
+
+  amount          Decimal          @db.Decimal(10, 2)
+  description     String?          @db.Text
+  metadata        Json?            // Additional transaction data
+
+  createdAt       DateTime         @default(now())
+
+  @@index([type])
+  @@index([paymentId])
+  @@index([createdAt])
+}
+
+// ============================================
+// ACTIVITY LOGS (AUDIT TRAIL)
+// ============================================
+
+model ActivityLog {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          ActivityType
+  description   String        @db.Text
+  metadata      Json?         // Additional context data
+  ipAddress     String?
+  userAgent     String?
+
+  createdAt     DateTime      @default(now())
+
+  @@index([userId])
+  @@index([type])
+  @@index([createdAt])
+}
+
